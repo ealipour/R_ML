@@ -1,0 +1,97 @@
+---
+title: "Data Modeling Using Caret"
+output: html_document
+keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE)
+knitr::opts_chunk$set(fig.path = "figure/")
+```
+
+## Loading Concrete Data from AppliedPredictiveModeling
+I am modeling the concrete data from library "Applied Predictive Modeling". Here's a summary of the data:
+```{r load}
+library(AppliedPredictiveModeling)
+data(concrete)
+summary(concrete)
+```
+
+I will then partition the data into the train, test buckets
+
+```{r partition}
+library(lattice)
+library(ggplot2)
+library(caret)
+library(Hmisc)
+library(dplyr)
+set.seed(1000)
+inTrain = createDataPartition(mixtures$CompressiveStrength, p = 3/4)[[1]]
+training = mixtures[ inTrain,]
+testing = mixtures[-inTrain,]
+```
+
+## Plots
+Some plot to understand the data
+
+```{r superplasticizer}
+hist(concrete$Superplasticizer)
+```
+
+Shows that the "Superplasticizer" variable is quite skewed
+
+```{r CompressiveStrength}
+FlyAsh_lev <- cut2(concrete$FlyAsh)
+
+Age_lev <- cut2(concrete$Age)
+plot(concrete$CompressiveStrength, type='p', col=FlyAsh_lev)
+##legend(2.8,-1,cement_lev, pch = c(1,2), lty = c(1,2))
+cor(concrete$CompressiveStrength,concrete$Age)
+```
+
+## Alzheimer's data
+```{r Alzheimers data}
+set.seed(3433)
+data(AlzheimerDisease)
+adData = data.frame(diagnosis,predictors)
+inTrain = createDataPartition(adData$diagnosis, p = 3/4)[[1]]
+training = adData[ inTrain,]
+testing = adData[-inTrain,]
+colnames(predictors)
+```
+By default, caret keeps the components that explain 95% of the variance. But you can change it by using the tresh parameter. You can also set a particular number of components by setting the pcaComp parameter.
+
+```{r preprocess}
+newdata<-select(training, starts_with("IL"))
+
+#preProc<-preProcess(newdata,method="pca",preProcOptions = list(thresh = 0.8))
+res.pca <- prcomp(newdata, scale = TRUE)
+summary(res.pca)
+```
+
+showing that you need 8-9 PCA components to capture 90% of the variance.
+
+```{r PCA confusionMat}
+diags <-training$diagnosis
+newdata <- data.frame(diags, newdata)
+preProc <- preProcess(newdata[,-1],method="pca", thresh=0.8)
+trainPC <- predict(preProc, newdata[,-1], method="glm")
+trainPC<-data.frame(diags,trainPC)
+modelFit <- train(diags ~ ., method="glm", data=trainPC)
+
+testPC <- predict(preProc, testing[,-1])
+confusionMatrix(testing$diagnosis, predict(modelFit, testPC))
+```
+PCA accuracy is 0.7195 $\sim$ 0.72.
+
+The non-PCA accuracy
+```{r nonPCA}
+nonPCAModelFit <- train(diags~., data=newdata,method="glm")
+newtesting <- data.frame(testing$diagnosis, select(testing, starts_with("IL")))
+
+testpredict <- predict(nonPCAModelFit,newtesting[,-1])
+
+confusionMatrix(testpredict,testing$diagnosis)
+```
+
+Showing an accuracy of 65%.
